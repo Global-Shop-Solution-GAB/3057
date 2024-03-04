@@ -1,0 +1,288 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Variable.Global.dDate.Declare(Date)
+Variable.Global.bCorrection.Declare(Boolean,False)
+Variable.Global.sSQL.Declare(String)
+Variable.Global.bAcc.Declare(Boolean,False)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sDate.Declare(String)
+V.Local.dDateToday.Declare(Date)
+V.Local.sEmployee.Declare(String)
+
+V.Local.sEmployee.Set(V.Passed.000002)
+F.Intrinsic.String.LPad(V.Local.sEmployee,"0",5,V.Local.sEmployee)
+V.Local.dDateToday.Set(V.Ambient.Date)
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass,1000)
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+'Pre-Ok HooK
+F.Intrinsic.Control.Case(29530)
+	V.Passed.GLOBAL.Set(V.Passed.000004)
+'Populate Hook
+F.Intrinsic.Control.Case(29560)
+	V.Passed.000204.Set("Correction Req")
+	V.Passed.000205.Set("Correction Comp")
+	V.Passed.000210.Set("Mgr/Spvsr Approval")
+F.Intrinsic.Control.Case(29561)
+	V.Local.sDate.Set(V.Passed.GLOBAL)
+	F.Intrinsic.Date.ConvertDString(V.Local.sDate,"MMDDYY",V.Global.dDate)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000076,"LOCK",1)
+	F.Intrinsic.Control.CallSub(Checkcorrection)
+F.Intrinsic.Control.Case(29591)
+	V.Local.sDate.Set(V.Passed.GLOBAL)
+	F.Intrinsic.Date.ConvertDString(V.Local.sDate,"MMDDYY",V.Global.dDate)
+	F.Intrinsic.Control.CallSub(Correctionneeded)
+F.Intrinsic.Control.Case(29592)
+	V.Local.sDate.Set(V.Passed.GLOBAL)
+	F.Intrinsic.Date.ConvertDString(V.Local.sDate,"MMDDYY",V.Global.dDate)
+	F.Intrinsic.Control.CallSub(Correctionfixed)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000205,"LOCK",1)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000204,"LOCK",0)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000210,"LOCK",0)
+F.Intrinsic.Control.Case(29593)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000076,"LOCK",0)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000204,"LOCK",1)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000210,"LOCK",1)
+F.Intrinsic.Control.Case(29580)
+	V.Local.sDate.Set(V.Passed.GLOBAL)
+	F.Intrinsic.Date.ConvertDString(V.Local.sDate,"MMDDYY",V.Global.dDate)
+	F.Intrinsic.String.Build("UPDATE GCG_3057_BAL_CORR SET APPROVED_BY = '{0}', APPROVAL_DATE =  '{1}' WHERE EMPLOYEE = '{2}' AND BAL_DATE = '{3}'",V.Caller.User,V.Local.dDateToday.PervasiveDate,V.Local.sEmployee,V.Global.dDate.PervasiveDate,V.Global.sSQL)
+	F.ODBC.Connection!con.Execute(V.Global.sSQL)
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3057_Mod_Daily_Bal.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Main.End
+
+Program.Sub.CheckCorrection.Start
+F.Intrinsic.Control.SetErrorHandler("CheckCorrection_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sEmployee.Declare(String)
+V.Local.sPayGroup.Declare(String)
+V.Local.iCount.Declare(Long)
+
+V.Local.sEmployee.Set(V.Passed.000002)
+
+F.Intrinsic.String.LPad(V.Local.sEmployee,"0",5,V.Local.sEmployee)
+F.Intrinsic.String.Build("SELECT * FROM GCG_3057_BAL_CORR WHERE EMPLOYEE = '{0}' AND Bal_Date = '{1}'",V.Local.sEmployee,V.Global.dDate.PervasiveDate,V.Global.sSQL)
+F.ODBC.Connection!con.OpenLocalRecordsetRW("rstCorr",V.Global.sSQL)
+
+F.Intrinsic.Control.If(V.ODBC.con!rstCorr.EOF,=,True)
+	F.ODBC.con!rstCorr.AddNew
+	F.ODBC.con!rstCorr.Set!Employee(V.Local.sEmployee)
+	F.ODBC.con!rstCorr.Set!Bal_Date(V.Global.dDate.PervasiveDate)
+	F.ODBC.con!rstCorr.Set!Correction(0)
+	F.ODBC.con!rstCorr.Update
+F.Intrinsic.Control.EndIf
+
+V.Global.bCorrection.Set(V.ODBC.con!rstCorr.FieldValTrim!Correction)
+
+F.Intrinsic.Control.If(V.Global.bCorrection,=,True)
+	F.ODBC.con!rstCorr.Close
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000204,"LOCK",1)
+	F.Intrinsic.Control.CallSub(Checkaccountant)
+	
+	F.Intrinsic.Control.If(V.Global.bAcc,=,True)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000205,"LOCK",0)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000205,"LOCK",1)
+	F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000210,"LOCK",1)
+F.Intrinsic.Control.Else
+	F.Intrinsic.Control.If(V.ODBC.con!rstCorr.FieldValTrim!APPROVED_BY,=,"")
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000204,"LOCK",0)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000210,"LOCK",0)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000205,"LOCK",1)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000204,"LOCK",0)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000210,"LOCK",1)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000205,"LOCK",1)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.con!rstCorr.Close
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CheckCorrection_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3057_Mod_Daily_Bal.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.CheckCorrection.End
+
+Program.Sub.CorrectionNeeded.Start
+F.Intrinsic.Control.SetErrorHandler("CorrectionNeeded_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sEmployee.Declare(String)
+V.Local.sPayGroup.Declare(String)
+V.Local.iCount.Declare(Long)
+
+V.Local.sEmployee.Set(V.Passed.000002)
+
+F.Intrinsic.String.LPad(V.Local.sEmployee,"0",5,V.Local.sEmployee)
+F.Intrinsic.String.Build("UPDATE GCG_3057_BAL_CORR SET CORRECTION = 1, CORR_REQUEST_BY = '{0}', APPROVED_BY = '', APPROVAL_DATE = '1900-01-01' WHERE Employee = '{1}' AND Bal_Date = '{2}'",V.Caller.User,V.Local.sEmployee,V.Global.dDate.PervasiveDate,V.Global.sSQL)
+F.ODBC.Connection!con.Execute(V.Global.sSQL)
+
+F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000204,"LOCK",1)
+F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000210,"LOCK",1)
+
+F.Intrinsic.Control.CallSub(Checkaccountant)
+
+F.Intrinsic.Control.If(V.Global.bAcc,=,True)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000205,"LOCK",0)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CorrectionNeeded_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3057_Mod_Daily_Bal.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.CorrectionNeeded.End
+
+Program.Sub.CheckAccountant.Start
+F.Intrinsic.Control.SetErrorHandler("CheckAccountant_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sPayGroup.Declare(String)
+V.Local.iCount.Declare(Long)
+
+F.Global.Security.GetPaygroupsFromUserID(V.Caller.CompanyCode,V.Caller.User,V.Local.sPayGroup)
+F.Intrinsic.String.Split(V.Local.sPayGroup,"*!*",V.Local.sPayGroup)
+
+F.Intrinsic.Control.For(V.Local.iCount,0,V.Local.sPayGroup.UBound,1)
+	F.Intrinsic.String.Build("SELECT UCASE(DESCR) AS DESCR FROM PAYROLL_PAY WHERE PAY_GROUP = '{0}'",V.Local.sPayGroup(V.Local.iCount),V.Global.sSQL)
+	F.ODBC.Connection!con.OpenLocalRecordsetRO("rstGroup",V.Global.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.con!rstGroup.EOF,=,False)
+		F.Intrinsic.Control.If(V.ODBC.con!rstGroup.FieldValTrim!DESCR,=,"ACCOUNTING")
+			V.Global.bAcc.Set(True)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+	F.ODBC.con!rstGroup.Close
+F.Intrinsic.Control.Next(V.Local.iCount)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CheckAccountant_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3057_Mod_Daily_Bal.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.CheckAccountant.End
+
+Program.Sub.CorrectionFixed.Start
+F.Intrinsic.Control.SetErrorHandler("CheckAccountant_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sEmployee.Declare(String)
+V.Local.dDate.Declare(Date)
+
+V.Local.sEmployee.Set(V.Passed.000002)
+V.Local.dDate.Set(V.Ambient.Date)
+
+F.Intrinsic.String.LPad(V.Local.sEmployee,"0",5,V.Local.sEmployee)
+
+F.Intrinsic.String.Build("SELECT TYPE FROM V_BALANCE_CHANGE WHERE CHANGE_USER = '{0}' AND CHANGE_DATE = '{1}' AND EMPLOYEE = '{2}'", V.Caller.User,V.Local.dDate.PervasiveDate,V.Local.sEmployee,V.Global.sSQL)
+F.ODBC.Connection!con.OpenLocalRecordsetRO("rstCheckType",V.Global.sSQL)
+
+'checks to see if the change is a job or time record
+F.Intrinsic.Control.If(V.ODBC.con!rstCheckType.FieldValTrim!TYPE,=,"J")
+
+	F.Intrinsic.String.Build("SELECT * FROM V_BALANCE_CHANGE WHERE  DTL_DATE = '{0}' AND CHANGE_USER = '{1}' AND CHANGE_DATE = '{2}' AND EMPLOYEE = '{3}'",V.Global.dDate.PervasiveDate,V.Caller.User,V.Local.dDate.PervasiveDate,V.Local.sEmployee,V.Global.sSQL)
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.Build("SELECT * FROM V_BALANCE_CHANGE WHERE CHANGE_USER = '{0}' AND CHANGE_DATE = '{1}' AND EMPLOYEE = '{2}'",V.Caller.User,V.Local.dDate.PervasiveDate,V.Local.sEmployee,V.Global.sSQL)
+F.Intrinsic.Control.EndIf
+
+F.ODBC.Connection!con.OpenLocalRecordsetRO("rstCheck",V.Global.sSQL)
+
+F.Intrinsic.Control.If(V.ODBC.con!rstCheck.EOF,<>,True)
+	F.ODBC.con!rstCheck.Close
+	F.Intrinsic.String.Build("UPDATE GCG_3057_BAL_CORR SET CORRECTION = 0, LAST_CORRECTION_DATE = '{0}' WHERE Employee = '{1}' AND Bal_Date = '{2}'",V.Local.dDate.PervasiveDate,V.Local.sEmployee,V.Global.dDate.PervasiveDate,V.Global.sSQL)
+	F.ODBC.Connection!con.Execute(V.Global.sSQL)
+F.Intrinsic.Control.Else
+	F.ODBC.con!rstCheck.Close
+	F.Intrinsic.UI.Msgbox("The time must be updated before removing the lock. Only the user who made the correction can remove the lock. ")
+	F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CheckAccountant_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3057_Mod_Daily_Bal.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.CorrectionFixed.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+F.ODBC.Connection!con.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3057_Mod_Daily_Bal.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Unload.End
+
+Program.Sub.Comments.Start
+${$0$}$Mod to Daily Balancing$}$BCC$}$11/24/2015 2:07:48 PM
+${$1$}$$}$$}$4$}$29593$}$JBS032L-SCRIPT-3-HOOK$}$11/24/2015 2:12:24 PM$}$(Program: JB032BGI???; Screen: JBS032L)
+
+${$1$}$$}$$}$3$}$29592$}$JBS032L-SCRIPT-2-HOOK$}$11/24/2015 2:12:02 PM$}$(Program: JB032BGI??; Screen: JBS032L)
+
+${$1$}$$}$$}$2$}$29591$}$JBS032L-SCRIPT-1-HOOK$}$11/24/2015 2:11:31 PM$}$(Program: JB032BGI?; Screen: JBS032L)
+
+${$1$}$$}$$}$1$}$29560$}$JBS032L-POPULATE-HOOK$}$11/24/2015 2:11:09 PM$}$(Program: JB032BGI??; Screen: JBS032L)
+
+${$1$}$$}$$}$0$}$29530$}$JBS032B-PRE-OK-HOOK$}$11/24/2015 2:07:47 PM$}$(Program: JB032BGI????; Screen: JBS032B)
+
+${$2$}$$}$$}$0$}$4$}$GCG_3057_DAY_BAL_SEC$}$11/24/2015 2:07:47 PM$}$CREATE TABLE "GCG_3057_DAY_BAL_SEC"(
+ "Employee" VARCHAR(5) NOT NULL ,
+ "Date" DATE NOT NULL ,
+ "Manager" VARCHAR(3) NOT NULL ,
+ "Correction" BIT NOT NULL );
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$This project will modify the Daily Balancing (No Dollars) to increase the security of the process. This project will update the screen so that the Save button is disabled by default. It will also make use of the Script 1, 2, and 3 buttons. The Script 1 button will allow the managers for the group that the selected employee is in to request a modification be done to the time. Once the Script 1 button has been clicked the Script 3 button will be disabled until an Accountant has clicked the Script 2 button. The Script 2 button will allow only be enabled for an Accountant. If anyone other than an Accountant loads Daily Balancing (No Dollars) the button will be disabled. This button should remain disabled until the Accountant has modified the time. Once time has been modified they can click on the Script 2 button. This will unlock the Script 3 button once again for the Manager/Supervisor. Clicking this button will re-enable the Save button for the screen. If the user leaves the screen or re-submits a modification request, the Save button will be disabled. Once the manager Saves the time, the Label containing "Previously Balanced Employee" Will be updated to also say Manager/Supervisor Approved.
+Program.Sub.Comments.End
+
